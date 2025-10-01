@@ -9,7 +9,16 @@ install requirements
 ```
 pip install -r requirements.txt
 ```
+Notes
 
+These versions are tested and compatible with the provided script.
+If you encounter conflicts, use a virtual environment:
+```
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+venv\Scripts\activate     # Windows
+pip install -r requirements.txt
+```
 start in CMD or any terminal
 Windows
 ```
