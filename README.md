@@ -1,4 +1,5 @@
 # Ardupilot_Log_Analyzer
+<img width="64" height="64" alt="icon" src="https://github.com/user-attachments/assets/4992b146-cbb6-422d-a1e1-2686b336cc0b" />
 
 clone this repo
 ```
