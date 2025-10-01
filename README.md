@@ -20,6 +20,11 @@ Linux
 python3 ardupilot_log_analyzer.py --mod dash
 ```
 
+Or CLI - Mode
+```
+python ardupilot_log_analyzer.py --mode file --log "path/to/your_log.BIN"
+```
+
 open your browser
 ```
 127.0.0.1:8050
