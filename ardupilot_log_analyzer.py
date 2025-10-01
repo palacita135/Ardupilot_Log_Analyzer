@@ -1042,7 +1042,7 @@ def serve_reports(filename):
     return send_from_directory(REPORT_DIR, filename, as_attachment=True)
 
 app.layout = html.Div([
-    html.H2('ArduPilot/PX4 Log Analyzer'),
+    html.H2('Enhanced ArduPilot/PX4 Log Analyzer'),
     dcc.Upload(
         id='upload',
         children=html.Div(['Drag & drop or click to select a BIN/LOG/ULog file']),
@@ -1108,6 +1108,7 @@ def process_upload(contents, filename):
 
     # --- Generate Visualizations ---
     children = []
+
     # Flight Info
     flight_info = [
         html.H4('Flight Information'),
@@ -1116,36 +1117,143 @@ def process_upload(contents, filename):
     ]
     children.append(html.Div(flight_info))
 
-    # RC Throttle Graph
+    # Flight Path Map
+    if 'gps' in dfs and dfs['gps'] is not None:
+        gps_df = dfs['gps']
+        latc = find_column(gps_df, ['lat', 'latitude'])
+        lonc = find_column(gps_df, ['lon', 'lng', 'longitude'])
+        if latc and lonc:
+            try:
+                gps_df = gps_df.rename(columns={latc: 'lat', lonc: 'lon'})
+                if gps_df['lat'].abs().mean() > 1000:
+                    gps_df['lat'] = gps_df['lat'] / 1e7
+                if gps_df['lon'].abs().mean() > 1000:
+                    gps_df['lon'] = gps_df['lon'] / 1e7
+                fig_map = px.line_mapbox(gps_df, lat='lat', lon='lon', zoom=12, height=420)
+                fig_map.update_layout(mapbox_style="open-street-map")
+                fig_map.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+                children.append(html.H4('Flight Path'))
+                children.append(dcc.Graph(figure=fig_map))
+            except Exception as e:
+                children.append(html.P(f"Flight path map error: {e}"))
+
+    # Datetime in HH:MM:SS
+    if 'gps' in dfs and dfs['gps'] is not None:
+        time_col = find_column(dfs['gps'], ['_time_s', 'time', 'TimeUS'])
+        if time_col:
+            try:
+                start_time = dfs['gps'][time_col].min()
+                end_time = dfs['gps'][time_col].max()
+                duration = end_time - start_time
+                start_dt = datetime.fromtimestamp(0) + timedelta(seconds=start_time)
+                end_dt = datetime.fromtimestamp(0) + timedelta(seconds=end_time)
+                children.append(html.H4('Flight Duration'))
+                children.append(html.P(f"Start: {start_dt.strftime('%H:%M:%S')}"))
+                children.append(html.P(f"End: {end_dt.strftime('%H:%M:%S')}"))
+                children.append(html.P(f"Duration: {timedelta(seconds=duration)}"))
+            except Exception as e:
+                children.append(html.P(f"Datetime error: {e}"))
+
+    # RC Analysis
     if 'rc' in dfs and dfs['rc'] is not None:
-        fig_rc = px.line(dfs['rc'], x='_time_s', y=['Ch3', 'ThrottlePercent'], title='RC Throttle (PWM and %)')
-        children.append(html.H4('RC Throttle Analysis'))
-        children.append(dcc.Graph(figure=fig_rc))
+        rc_df = dfs['rc']
+        rc_channels = [c for c in rc_df.columns if c.startswith('Ch') or c.startswith('ch')]
+        if rc_channels:
+            fig_rc = px.line(rc_df, x='_time_s', y=rc_channels, title='RC Channels (PWM)')
+            children.append(html.H4('RC Channels'))
+            children.append(dcc.Graph(figure=fig_rc))
+        if 'ThrottlePercent' in rc_df.columns:
+            fig_throttle = px.line(rc_df, x='_time_s', y='ThrottlePercent', title='Throttle (%)')
+            children.append(html.H4('Throttle Percentage'))
+            children.append(dcc.Graph(figure=fig_throttle))
 
-    # PM Graph
-    if 'pm' in dfs and dfs['pm'] is not None:
-        fig_pm = px.line(dfs['pm'], x='_time_s', y=[c for c in dfs['pm'].columns if 'curr' in c.lower() or 'volt' in c.lower()], title='Power Module Telemetry')
-        children.append(html.H4('Power Module Analysis'))
-        children.append(dcc.Graph(figure=fig_pm))
+    # TECS Analysis
+    if 'tecs' in dfs and dfs['tecs'] is not None:
+        tecs_df = dfs['tecs']
+        tecs_cols = [c for c in tecs_df.columns if 'err' not in c.lower()]
+        if tecs_cols:
+            fig_tecs = px.line(tecs_df, x='_time_s', y=tecs_cols, title='TECS Telemetry')
+            children.append(html.H4('TECS Telemetry'))
+            children.append(dcc.Graph(figure=fig_tecs))
 
-    # Servo Graph
+    # Servo Analysis
     servo_df = None
     for k in dfs.keys():
         if k and ('servo' in k or 'actuator' in k):
             servo_df = dfs[k]
             break
     if servo_df is not None:
-        fig_servo = px.line(servo_df, x='_time_s', y=[c for c in servo_df.columns if re.match(r'^(servo|chan|out|c)\d+', str(c).lower())], title='Servo PWM Outputs')
-        children.append(html.H4('Servo Analysis'))
-        children.append(dcc.Graph(figure=fig_servo))
+        servo_channels = [c for c in servo_df.columns if re.match(r'^(servo|chan|out|c)\d+', str(c).lower())]
+        if servo_channels:
+            fig_servo = px.line(servo_df, x='_time_s', y=servo_channels, title='Servo PWM Outputs')
+            children.append(html.H4('Servo PWM Outputs'))
+            children.append(dcc.Graph(figure=fig_servo))
 
-    # Speed and Stall Graph
-    if 'arsp' in dfs and dfs['arsp'] is not None:
-        fig_speed = px.line(dfs['arsp'], x='_time_s', y='Airspeed', title='Airspeed and Throttle')
-        if 'rc' in dfs and dfs['rc'] is not None:
-            fig_speed.add_scatter(x=dfs['rc']['_time_s'], y=dfs['rc']['ThrottlePercent'], name='Throttle %')
-        children.append(html.H4('Speed and Stall Analysis'))
-        children.append(dcc.Graph(figure=fig_speed))
+    # Sensor Analysis (IMU)
+    if 'imu' in dfs and dfs['imu'] is not None:
+        imu_df = dfs['imu']
+        imu_cols = [c for c in imu_df.columns if 'acc' in c.lower() or 'gyro' in c.lower()]
+        if imu_cols:
+            fig_imu = px.line(imu_df, x='_time_s', y=imu_cols, title='IMU Telemetry (Accel/Gyro)')
+            children.append(html.H4('IMU Telemetry'))
+            children.append(dcc.Graph(figure=fig_imu))
+
+    # Altitude Analysis
+    if 'gps' in dfs and dfs['gps'] is not None:
+        alt_col = find_column(dfs['gps'], ['alt', 'altitude'])
+        if alt_col:
+            fig_alt = px.line(dfs['gps'], x='_time_s', y=alt_col, title='Altitude Over Time')
+            children.append(html.H4('Altitude Over Time'))
+            children.append(dcc.Graph(figure=fig_alt))
+
+    # EKF/EKF3 Analysis
+    for ekf_key in ['ekf', 'ekf3', 'ekf_status_report', 'ekf3_status_report']:
+        if ekf_key in dfs and dfs[ekf_key] is not None:
+            ekf_df = dfs[ekf_key]
+            ekf_cols = [c for c in ekf_df.columns if 'err' in c.lower() or 'warning' in c.lower()]
+            if ekf_cols:
+                fig_ekf = px.line(ekf_df, x='_time_s', y=ekf_cols, title=f'{ekf_key.upper()} Errors')
+                children.append(html.H4(f'{ekf_key.upper()} Errors'))
+                children.append(dcc.Graph(figure=fig_ekf))
+
+    # PM (Power Module) Analysis
+    if 'pm' in dfs and dfs['pm'] is not None:
+        pm_df = dfs['pm']
+        pm_cols = [c for c in pm_df.columns if 'curr' in c.lower() or 'volt' in c.lower()]
+        if pm_cols:
+            fig_pm = px.line(pm_df, x='_time_s', y=pm_cols, title='Power Module Telemetry')
+            children.append(html.H4('Power Module Telemetry'))
+            children.append(dcc.Graph(figure=fig_pm))
+
+    # Speed Analysis
+    if 'gps' in dfs and dfs['gps'] is not None:
+        spd_col = find_column(dfs['gps'], ['spd', 'speed'])
+        if spd_col:
+            fig_spd = px.line(dfs['gps'], x='_time_s', y=spd_col, title='Speed Over Time')
+            children.append(html.H4('Speed Over Time'))
+            children.append(dcc.Graph(figure=fig_spd))
+
+    # Mode Timeline
+    if not mode_df.empty:
+        try:
+            base_t = datetime.utcnow()
+            md = mode_df.copy()
+            md['start'] = md['start'].fillna(0)
+            md['end'] = md['end'].fillna(md['start'] + 1)
+            md['start_dt'] = md['start'].apply(lambda s: base_t + timedelta(seconds=float(s) if s is not None else 0))
+            md['end_dt'] = md['end'].apply(lambda s: base_t + timedelta(seconds=float(s) if s is not None else 0))
+            fig_gantt = px.timeline(md, x_start='start_dt', x_end='end_dt', y='mode', color='mode', height=300)
+            for ev in events:
+                if ev.get('time') is None:
+                    continue
+                ev_dt = base_t + timedelta(seconds=float(ev['time']))
+                fig_gantt.add_vline(x=ev_dt, line=dict(color='red', width=2, dash='dash'))
+                fig_gantt.add_annotation(x=ev_dt, y=0.5, text=ev.get('text'), showarrow=True, arrowhead=1)
+            fig_gantt.update_yaxes(autorange='reversed')
+            children.append(html.H4('Mode Timeline'))
+            children.append(dcc.Graph(figure=fig_gantt))
+        except Exception as e:
+            children.append(html.P(f"Mode timeline error: {e}"))
 
     # Issues Summary
     if issues:
@@ -1157,6 +1265,7 @@ def process_upload(contents, filename):
 
     downloads = html.Div([html.A('Download PDF', href=f'/reports/{pdffn}', target='_blank')])
     return html.Div(children), downloads, html.Div([html.P(s) for s in steps])
+
 
 # --- CLI Mode ---
 def run_file_mode(path):
