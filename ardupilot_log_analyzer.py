@@ -1042,7 +1042,7 @@ def serve_reports(filename):
     return send_from_directory(REPORT_DIR, filename, as_attachment=True)
 
 app.layout = html.Div([
-    html.H2('Enhanced ArduPilot/PX4 Log Analyzer'),
+    html.H2('ArduPilot/PX4 Log Analyzer'),
     dcc.Upload(
         id='upload',
         children=html.Div(['Drag & drop or click to select a BIN/LOG/ULog file']),
@@ -1290,3 +1290,4 @@ if __name__ == '__main__':
             print('--log required for file mode')
             sys.exit(1)
         run_file_mode(args.log)
+
