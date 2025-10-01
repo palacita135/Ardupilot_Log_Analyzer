@@ -1,19 +1,9 @@
-# requirements.txt for ArduPilot Log Analyzer prototype
-
-# Core dependencies
-pandas
-numpy
-
-# For parsing ArduPilot logs
-pymavlink
-
-# For web dashboard GUI
-plotly
-dash
-
-# For optional PyQt desktop GUI
-pyqt5
-matplotlib
-
-#report
-reportlab
+pandas==2.0.3
+numpy==1.24.3
+dash==2.9.3
+dash-bootstrap-components==1.4.1
+plotly==5.15.0
+pymavlink==2.4.36
+reportlab==4.0.4
+pyulog==2.4.0
+flask==2.3.2
